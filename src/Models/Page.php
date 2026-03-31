@@ -56,6 +56,7 @@ use Laravel\Scout\Searchable;
  * @property \Illuminate\Support\Carbon|null $updated_at
  * @property \Illuminate\Support\Carbon|null $deleted_at
  * @property \Aimeos\Nestedset\Collection<int, Nav>|null $subtree
+ * @property-read Collection<int, Page> $ancestors
  * @method static \Illuminate\Database\Eloquent\Builder<static> withoutTenancy()
  */
 class Page extends Base
@@ -68,6 +69,10 @@ class Page extends Base
     use Searchable {
         NodeTrait::usesSoftDelete insteadof Searchable;
     }
+
+
+    /** @var Collection<int, Page>|null */
+    private ?Collection $cachedAncestorsAndSelf = null;
 
 
     /**
@@ -275,6 +280,17 @@ class Page extends Base
 
 
     /**
+     * Returns ancestors including self (root→self), cached per instance.
+     *
+     * @return Collection<int, Page>
+     */
+    public function getAncestorsAndSelfAttribute() : Collection
+    {
+        return $this->cachedAncestorsAndSelf ??= collect( $this->ancestors )->push( $this );
+    }
+
+
+    /**
      * Tests if node has children.
      *
      * @return bool TRUE if node has children, FALSE if not
@@ -321,7 +337,7 @@ class Page extends Base
      */
     public function nav( $level = 0 ) : \Aimeos\Nestedset\Collection
     {
-        return ( clone $this->ancestors )->push( $this ) // @phpstan-ignore-line property.notFound
+        return collect( $this->ancestors )->push( $this )
             ->skip( $level )->first()
             ?->subtree?->toTree()
             ?? new \Aimeos\Nestedset\Collection();
@@ -400,13 +416,19 @@ class Page extends Base
         // restrict maximum depth to three levels for performance reasons
         $maxDepth = ( $this->depth ?? 0 ) + config( 'cms.navdepth', 2 );
 
-        $builder = $this->newScopedQuery()->with( 'latest' )
+        $isEditor = \Aimeos\Cms\Permission::can( 'page:view', Auth::user() );
+
+        $builder = $this->newScopedQuery()
             ->select( 'id', 'parent_id', '_lft', '_rgt', 'depth', 'name', 'title', 'tag', 'path', 'domain', 'lang', 'to', 'status', 'config' )
             ->whereIn( 'depth', range( 0, $maxDepth ) )
             ->defaultOrder()
             ->setModel(new Nav());
 
-        if( !\Aimeos\Cms\Permission::can( 'page:view', Auth::user() ) )
+        if( $isEditor ) {
+            $builder->with( 'latest' );
+        }
+
+        if( !$isEditor )
         {
             $table = $this->getTable();
 
