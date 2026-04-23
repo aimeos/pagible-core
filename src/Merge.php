@@ -206,6 +206,16 @@ class Merge
 
                     $result[$k] = $sub;
                 }
+                elseif( is_string( $base[$k] ?? null ) && is_string( $current[$k] ?? null ) && is_string( $incoming[$k] ?? null ) )
+                {
+                    $sub = self::tryString( $base[$k], $current[$k], $incoming[$k] );
+
+                    if( $sub === null ) {
+                        return null;
+                    }
+
+                    $result[$k] = $sub;
+                }
                 else
                 {
                     return null;
@@ -214,6 +224,47 @@ class Merge
         }
 
         return $result;
+    }
+
+
+    /**
+     * Attempts a word-level three-way merge for strings.
+     *
+     * Splits strings by whitespace and merges non-overlapping word changes.
+     * Returns the merged string or null if the same word was changed by both sides.
+     *
+     * @param string $base
+     * @param string $current
+     * @param string $incoming
+     * @return string|null
+     */
+    protected static function tryString( string $base, string $current, string $incoming ) : ?string
+    {
+        $bWords = preg_split( '/\s+/', $base, -1, PREG_SPLIT_NO_EMPTY ) ?: [];
+        $cWords = preg_split( '/\s+/', $current, -1, PREG_SPLIT_NO_EMPTY ) ?: [];
+        $iWords = preg_split( '/\s+/', $incoming, -1, PREG_SPLIT_NO_EMPTY ) ?: [];
+
+        $max = max( count( $bWords ), count( $cWords ), count( $iWords ) );
+        $result = [];
+
+        for( $n = 0; $n < $max; $n++ )
+        {
+            $bw = $bWords[$n] ?? '';
+            $cw = $cWords[$n] ?? '';
+            $iw = $iWords[$n] ?? '';
+
+            if( $cw !== $bw && $iw === $bw ) {
+                $result[] = $cw;
+            } elseif( $iw !== $bw && $cw === $bw ) {
+                $result[] = $iw;
+            } elseif( $cw === $iw ) {
+                $result[] = $cw;
+            } else {
+                return null;
+            }
+        }
+
+        return implode( ' ', $result );
     }
 
 

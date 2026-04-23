@@ -348,6 +348,31 @@ class MergeTest extends CoreTestAbstract
     }
 
 
+    public function testTryStringNonOverlapping()
+    {
+        $base = ['text' => 'Hello World'];
+        $current = ['text' => 'Hi World'];
+        $incoming = ['text' => 'Hello Earth'];
+
+        $result = Merge::try( $base, $current, $incoming );
+
+        $this->assertNotNull( $result );
+        $this->assertEquals( 'Hi Earth', $result['text'] );
+    }
+
+
+    public function testTryStringConflict()
+    {
+        $base = ['text' => 'Hello World'];
+        $current = ['text' => 'Hi World'];
+        $incoming = ['text' => 'Hey World'];
+
+        $result = Merge::try( $base, $current, $incoming );
+
+        $this->assertNull( $result );
+    }
+
+
     public function testTryWithStdClass()
     {
         $base = ['data' => (object) ['title' => 'old', 'text' => 'old']];
@@ -359,5 +384,18 @@ class MergeTest extends CoreTestAbstract
         $this->assertNotNull( $result );
         $this->assertEquals( 'new-title', $result['data']['title'] );
         $this->assertEquals( 'new-text', $result['data']['text'] );
+    }
+
+
+    public function testContentMergedStringFields()
+    {
+        $base = [['id' => 'a', 'type' => 'text', 'data' => ['text' => 'Hello World']]];
+        $current = [['id' => 'a', 'type' => 'text', 'data' => ['text' => 'Hi World']]];
+        $incoming = [['id' => 'a', 'type' => 'text', 'data' => ['text' => 'Hello Earth']]];
+
+        [$result, $diff] = Merge::content( $base, $current, $incoming );
+
+        $this->assertNotNull( $diff['a']['merged'] );
+        $this->assertEquals( 'Hi Earth', $diff['a']['merged']['data']['text'] );
     }
 }
