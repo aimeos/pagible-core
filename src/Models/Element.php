@@ -7,7 +7,6 @@
 
 namespace Aimeos\Cms\Models;
 
-use Aimeos\Cms\Concerns\HasChanged;
 use Aimeos\Cms\Concerns\Tenancy;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
@@ -36,7 +35,6 @@ use Laravel\Scout\Searchable;
  */
 class Element extends Base
 {
-    use HasChanged;
     use HasUuids;
     use SoftDeletes;
     use Searchable;
@@ -99,7 +97,7 @@ class Element extends Base
     public function __toString() : string
     {
         $content = ( $this->name ?? '' ) . "\n";
-        $config = \Aimeos\Cms\Schema::schemas( section: 'content' );
+        $config = config( 'cms.schemas.content', [] );
         $fields = (array) ( $config[@$this->data->type]['fields'] ?? [] );
 
         foreach( (array) ( $this->data->data ?? [] ) as $name => $value )

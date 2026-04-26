@@ -55,9 +55,10 @@ class HelpersTest extends CoreTestAbstract
 
 		$views = cmsviews( $page, $item );
 
-		$this->assertCount( 2, $views );
-		$this->assertEquals( 'cms::heading', $views[0] );
-		$this->assertEquals( 'cms::invalid', $views[1] );
+		$this->assertCount( 3, $views );
+		$this->assertEquals( 'heading', $views[0] );
+		$this->assertEquals( 'cms::heading', $views[1] );
+		$this->assertEquals( 'cms::invalid', $views[2] );
 	}
 
 
@@ -65,12 +66,13 @@ class HelpersTest extends CoreTestAbstract
 	{
 		$page = new \Aimeos\Cms\Models\Page();
 		$page->theme = 'mytheme';
-		$item = (object) ['type' => 'mytheme::card'];
+		$item = (object) ['type' => 'card'];
 
 		$views = cmsviews( $page, $item );
 
-		$this->assertEquals( 'mytheme::card', $views[0] );
-		$this->assertEquals( 'cms::invalid', $views[1] );
+		$this->assertEquals( 'card', $views[0] );
+		$this->assertEquals( 'mytheme::card', $views[1] );
+		$this->assertEquals( 'cms::invalid', $views[2] );
 	}
 
 

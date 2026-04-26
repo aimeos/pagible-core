@@ -8,7 +8,6 @@
 namespace Aimeos\Cms;
 
 use Carbon\Carbon;
-use Illuminate\Contracts\Auth\Authenticatable;
 
 
 class Validation
@@ -18,11 +17,11 @@ class Validation
      * sanitizes HTML content, validates content/meta/config schemas.
      *
      * @param array<string, mixed> $input Page input data
-     * @param Authenticatable|null $user Authenticated user
+     * @param mixed $user Authenticated user
      * @return array<string, mixed> Sanitized input
      * @throws \InvalidArgumentException On validation failure
      */
-    public static function page( array $input, ?Authenticatable $user = null ) : array
+    public static function page( array $input, mixed $user ) : array
     {
         if( !Utils::isValidUrl( $input['to'] ?? null, false ) ) {
             throw new \InvalidArgumentException( sprintf( 'Invalid URL "%s" in "to" field', $input['to'] ?? '' ) );
@@ -72,9 +71,9 @@ class Validation
      */
     public static function content( array $items ) : array
     {
-        $schemas = Schema::schemas( section: 'content' );
+        self::validateContent( $items );
 
-        self::validateContent( $items, $schemas );
+        $schemas = config( 'cms.schemas.content', [] );
 
         return array_values( array_map( function( array|object $item ) use ( $schemas ) {
             $item = (array) $item;
@@ -101,9 +100,9 @@ class Validation
      */
     public static function structured( array $items, string $section, array|object|null $existing = null ) : object
     {
-        $schemas = Schema::schemas( section: $section );
+        self::validateStructured( (object) $items, $section );
 
-        self::validateStructured( (object) $items, $section, $schemas );
+        $schemas = config( "cms.schemas.{$section}", [] );
         $result = (object) ( (array) ( $existing ?? new \stdClass() ) );
 
         foreach( $items as $type => $data )
@@ -147,12 +146,11 @@ class Validation
      * Validates page/element content arrays against configured schemas
      *
      * @param iterable<array<string, mixed>|object> $items Content items to validate
-     * @param array<string, mixed>|null $schemas Pre-loaded schemas or null to load
      * @throws \InvalidArgumentException If content type is unknown
      */
-    private static function validateContent( iterable $items, ?array $schemas = null ): void
+    private static function validateContent( iterable $items ): void
     {
-        $schemas ??= Schema::schemas( section: 'content' );
+        $schemas = config( 'cms.schemas.content', [] );
 
         foreach( $items as $item )
         {
@@ -178,7 +176,7 @@ class Validation
      */
     public static function element( string $type ): void
     {
-        $schemas = Schema::schemas( section: 'content' );
+        $schemas = config( 'cms.schemas.content', [] );
 
         if( !isset( $schemas[$type] ) ) {
             throw new \InvalidArgumentException( sprintf( 'Unknown element type "%s"', $type ) );
@@ -194,11 +192,10 @@ class Validation
      *
      * @param object $items Object with named entries to validate
      * @param string $schemaKey Schema config key (e.g. 'meta', 'config')
-     * @param array<string, mixed>|null $schemas Pre-loaded schemas or null to load
      */
-    private static function validateStructured( object $items, string $schemaKey, ?array $schemas = null ): void
+    private static function validateStructured( object $items, string $schemaKey ): void
     {
-        $schemas ??= Schema::schemas( section: $schemaKey );
+        $schemas = config( 'cms.schemas.' . $schemaKey, [] );
 
         foreach( get_object_vars( $items ) as $key => $item )
         {

@@ -136,7 +136,7 @@ class Version extends Model
             $content .= $lang . ":\n" . $value . "\n";
         }
 
-        $config = \Aimeos\Cms\Schema::schemas( section: 'content' );
+        $config = config( 'cms.schemas.content', [] );
         $items = collect( (array) ( $this->aux->content ?? [] ) );
 
         if( $items->isNotEmpty() ) {

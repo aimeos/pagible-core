@@ -16,6 +16,18 @@ abstract class CoreTestAbstract extends CmsTestAbstract
 
 		$app['config']->set('cms.locales', ['en', 'de'] );
 
-		\Aimeos\Cms\Schema::register( dirname( __DIR__, 2 ) . '/theme', 'cms' );
+		$app['config']->set('cms.schemas.content.heading', [
+			'group' => 'basic',
+			'fields' => [
+				'title' => [
+					'type' => 'string',
+					'min' => 1,
+				],
+				'level' => [
+					'type' => 'select',
+					'required' => true,
+				],
+			],
+		]);
 	}
 }
