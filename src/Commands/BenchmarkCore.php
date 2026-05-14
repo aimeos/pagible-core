@@ -16,7 +16,6 @@ use Aimeos\Cms\Models\Element;
 use Aimeos\Cms\Models\File;
 use Aimeos\Cms\Models\Page;
 use Aimeos\Cms\Utils;
-use Aimeos\Nestedset\NestedSet;
 
 
 class BenchmarkCore extends Command
@@ -71,11 +70,11 @@ class BenchmarkCore extends Command
 
         $count = Page::where( 'tag', '!=', 'root' )->count();
         $page = Page::where( 'tag', '!=', 'root' )
-            ->orderBy( NestedSet::LFT )->skip( (int) floor( $count / 2 ) )
+            ->orderBy( '_lft' )->skip( (int) floor( $count / 2 ) )
             ->firstOrFail();
 
         $parentIds = $page->ancestors()->get()->pluck( 'id' );
-        $moveParent = Page::where( NestedSet::DEPTH, 1 )
+        $moveParent = Page::where( 'depth', 1 )
             ->whereNotIn( 'id', $parentIds )
             ->firstOrFail();
 
@@ -122,7 +121,7 @@ class BenchmarkCore extends Command
         }, readOnly: true, tries: $tries );
 
         $this->benchmark( 'Page list', function() {
-            Page::with( 'files', 'elements.files' )->orderBy( NestedSet::LFT )->take( 100 )->get();
+            Page::with( 'files', 'elements.files' )->orderBy( '_lft' )->take( 100 )->get();
         }, readOnly: true, tries: $tries );
 
         $this->benchmark( 'Page update', function() use ( $page ) {
@@ -158,7 +157,7 @@ class BenchmarkCore extends Command
         }, tries: $tries );
 
         $this->benchmark( 'Page tree', function() use ( $root ) {
-            Page::select( 'id', 'parent_id', 'name', 'title', 'tag', 'path', 'domain', 'lang', 'to', 'status', 'config', 'latest_id', NestedSet::LFT, NestedSet::RGT, NestedSet::DEPTH )
+            Page::select( 'id', 'parent_id', '_lft', '_rgt', 'depth', 'name', 'title', 'tag', 'path', 'domain', 'lang', 'to', 'status', 'config', 'latest_id' )
                 ->where( 'parent_id', $root->id )->with( ['children', 'latest'] )->get();
         }, readOnly: true, tries: $tries );
 

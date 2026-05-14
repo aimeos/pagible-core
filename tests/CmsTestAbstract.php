@@ -21,7 +21,6 @@ abstract class CmsTestAbstract extends \Orchestra\Testbench\TestCase
 
 	protected function defineEnvironment( $app )
 	{
-        $app['config']->set('database.default', 'testing');
         $app['config']->set('database.connections.testing', [
             'driver'   => env('DB_DRIVER', 'sqlite'),
             'host'     => env('DB_HOST', ''),
@@ -39,13 +38,6 @@ abstract class CmsTestAbstract extends \Orchestra\Testbench\TestCase
             return 'test';
         };
     }
-
-
-	protected function tearDown(): void
-	{
-		( new \ReflectionProperty( \Aimeos\Cms\Schema::class, 'themes' ) )->setValue( null, [] );
-		parent::tearDown();
-	}
 
 
 	protected function getPackageProviders( $app )

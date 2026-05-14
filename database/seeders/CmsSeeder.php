@@ -14,7 +14,7 @@ use Aimeos\Cms\Models\File;
 use Aimeos\Cms\Models\Page;
 
 
-class TestSeeder extends Seeder
+class CmsSeeder extends Seeder
 {
     private string $element;
     private string $file;

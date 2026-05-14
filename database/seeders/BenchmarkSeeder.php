@@ -69,17 +69,21 @@ class BenchmarkSeeder
         $fileIds = $this->createFiles( $fileCount, $now, $nowMs );
         $elementIds = $this->createElements( $elementCount, $now, $nowMs );
 
-        $this->buildPageTree( $totalPages, $fileIds, $elementIds, $now, $nowMs );
+        $rows = $this->buildPageTree( $totalPages, $fileIds, $elementIds, $now, $nowMs );
+
+        $this->insertRows( $rows );
+        $this->clearPageCache( $rows['pages'] );
     }
 
 
     /**
-     * Build page tree rows with nested set values, flushing in batches.
+     * Build page tree rows with nested set values.
      *
      * @param array<int, string> $fileIds
      * @param array<int, string> $elementIds
+     * @return array<string, array<int, array<string, mixed>>>
      */
-    protected function buildPageTree( int $totalPages, array $fileIds, array $elementIds, string $now, string $nowMs ): void
+    protected function buildPageTree( int $totalPages, array $fileIds, array $elementIds, string $now, string $nowMs ): array
     {
         $level2Count = 100; // 10 L1 × 10 L2
         $level3PerL2 = max( 0, intdiv( $totalPages - 1 - 10 - $level2Count, $level2Count ) );
@@ -98,11 +102,6 @@ class BenchmarkSeeder
         $lft = 1;
         $pageIndex = 0;
         $fileIndex = 0;
-
-        $flush = function() use ( &$pages, &$versions, &$pivotPageFile, &$pivotPageElement, &$pivotVersionFile, &$pivotVersionElement ) {
-            $this->insertRows( compact( 'pages', 'versions', 'pivotPageFile', 'pivotPageElement', 'pivotVersionFile', 'pivotVersionElement' ) );
-            $pages = $versions = $pivotPageFile = $pivotPageElement = $pivotVersionFile = $pivotVersionElement = [];
-        };
 
         // Root page
         $rootId = ( new Page )->newUniqueId();
@@ -128,8 +127,6 @@ class BenchmarkSeeder
         $pivotPageElement[] = ['page_id' => $rootId, 'element_id' => $elementIds[$pageIndex % $elementCount]];
         $pivotVersionFile[] = ['version_id' => $rootVersionId, 'file_id' => $fileIds[$fileIndex % $fileCount]];
         $pivotVersionElement[] = ['version_id' => $rootVersionId, 'element_id' => $elementIds[$pageIndex % $elementCount]];
-
-        Cache::forget( Page::key( '', $this->domain ) );
 
         $lft++;
         $fileIndex++;
@@ -166,8 +163,6 @@ class BenchmarkSeeder
             $pivotVersionFile[] = ['version_id' => $l1VersionId, 'file_id' => $l1Fid];
             $pivotVersionElement[] = ['version_id' => $l1VersionId, 'element_id' => $elementIds[$pageIndex % $elementCount]];
 
-            Cache::forget( Page::key( "category-{$i}", $this->domain ) );
-
             $lft++;
             $fileIndex++;
             $pageIndex++;
@@ -201,8 +196,6 @@ class BenchmarkSeeder
                 $pivotVersionFile[] = ['version_id' => $l2VersionId, 'file_id' => $l2Fid];
                 $pivotVersionElement[] = ['version_id' => $l2VersionId, 'element_id' => $elementIds[$pageIndex % $elementCount]];
 
-                Cache::forget( Page::key( "subcategory-{$i}-{$j}", $this->domain ) );
-
                 $lft++;
                 $fileIndex++;
                 $pageIndex++;
@@ -233,15 +226,9 @@ class BenchmarkSeeder
                     $pivotVersionFile[] = ['version_id' => $l3VersionId, 'file_id' => $l3Fid];
                     $pivotVersionElement[] = ['version_id' => $l3VersionId, 'element_id' => $elementIds[$pageIndex % $elementCount]];
 
-                    Cache::forget( Page::key( "page-{$i}-{$j}-{$k}", $this->domain ) );
-
                     $lft += 2;
                     $fileIndex++;
                     $pageIndex++;
-
-                    if( count( $pages ) >= $this->chunk ) {
-                        $flush();
-                    }
                 }
 
                 $lft++;
@@ -250,9 +237,7 @@ class BenchmarkSeeder
             $lft++;
         }
 
-        if( !empty( $pages ) ) {
-            $flush();
-        }
+        return compact( 'pages', 'versions', 'pivotPageFile', 'pivotPageElement', 'pivotVersionFile', 'pivotVersionElement' );
     }
 
 
@@ -276,14 +261,27 @@ class BenchmarkSeeder
 
         foreach( $tables as $table => $data )
         {
-            if( !empty( $data ) )
+            foreach( array_chunk( $data, $this->chunk ) as $batch )
             {
-                DB::connection( $conn )->table( $table )->insert( $data );
+                DB::connection( $conn )->table( $table )->insert( $batch );
 
                 if( $this->onProgress ) {
-                    ( $this->onProgress )( count( $data ) );
+                    ( $this->onProgress )( count( $batch ) );
                 }
             }
+        }
+    }
+
+
+    /**
+     * Clear page cache for seeded pages.
+     *
+     * @param array<int, array<string, mixed>> $pageRows
+     */
+    protected function clearPageCache( array $pageRows ): void
+    {
+        foreach( $pageRows as $row ) {
+            Cache::forget( Page::key( $row['path'], $row['domain'] ) );
         }
     }
 
