@@ -209,16 +209,7 @@ class File extends Base
         $ext = $manager->driver()->supports( 'image/webp' ) ? 'webp' : 'jpg';
 
         if( is_string( $resource ) && \Aimeos\Cms\Utils::isValidUrl( $resource ) ) {
-            $tmp = tmpfile();
-            $response = Http::withOptions( ['sink' => $tmp] )->get( $resource );
-
-            if( !$response->successful() ) {
-                fclose( $tmp );
-                throw new \RuntimeException( sprintf( 'Failed to download "%s"', $resource ) );
-            }
-
-            fseek( $tmp, 0 );
-            $resource = $tmp;
+            $resource = Http::withOptions( ['stream' => true] )->get( $resource )->toPsrResponse()->getBody()->detach();
         }
 
         if( $resource instanceof UploadedFile ) {
@@ -368,7 +359,7 @@ class File extends Base
      */
     public function removeFile() : self
     {
-        if( $this->path && str_starts_with( $this->path, 'http' ) ) {
+        if( $this->path && !str_starts_with( $this->path, 'http' ) ) {
             Storage::disk( config( 'cms.disk', 'public' ) )->delete( $this->path );
         }
 
