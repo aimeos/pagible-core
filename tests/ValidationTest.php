@@ -8,7 +8,7 @@
 namespace Tests;
 
 use Aimeos\Cms\Validation;
-use InvalidArgumentException;
+use Aimeos\Cms\Exception;
 
 
 class ValidationTest extends CoreTestAbstract
@@ -25,7 +25,7 @@ class ValidationTest extends CoreTestAbstract
 
     public function testContentBadType()
     {
-        $this->expectException( InvalidArgumentException::class );
+        $this->expectException( Exception::class );
         $this->expectExceptionMessage( 'Unknown content type "nonexistent"' );
 
         Validation::content( [
@@ -36,7 +36,7 @@ class ValidationTest extends CoreTestAbstract
 
     public function testContentNoType()
     {
-        $this->expectException( InvalidArgumentException::class );
+        $this->expectException( Exception::class );
         $this->expectExceptionMessage( 'Unknown content type ""' );
 
         Validation::content( [
@@ -103,7 +103,7 @@ class ValidationTest extends CoreTestAbstract
 
     public function testElementBadType()
     {
-        $this->expectException( InvalidArgumentException::class );
+        $this->expectException( Exception::class );
         $this->expectExceptionMessage( 'Unknown element type "nonexistent"' );
 
         Validation::element( 'nonexistent' );
@@ -112,7 +112,7 @@ class ValidationTest extends CoreTestAbstract
 
     public function testElementEmptyType()
     {
-        $this->expectException( InvalidArgumentException::class );
+        $this->expectException( Exception::class );
         $this->expectExceptionMessage( 'Unknown element type ""' );
 
         Validation::element( '' );
@@ -173,9 +173,17 @@ class ValidationTest extends CoreTestAbstract
     }
 
 
+    public function testPublishAtFutureWithTime()
+    {
+        Validation::publishAt( '2099-06-15 14:30:00' );
+
+        $this->assertTrue( true );
+    }
+
+
     public function testPublishAtPast()
     {
-        $this->expectException( InvalidArgumentException::class );
+        $this->expectException( Exception::class );
         $this->expectExceptionMessage( 'Publish date must be in the future' );
 
         Validation::publishAt( '2020-01-01 00:00:00' );
@@ -184,7 +192,7 @@ class ValidationTest extends CoreTestAbstract
 
     public function testPublishAtInvalid()
     {
-        $this->expectException( InvalidArgumentException::class );
+        $this->expectException( Exception::class );
         $this->expectExceptionMessage( 'Invalid publish date' );
 
         Validation::publishAt( 'not-a-date' );

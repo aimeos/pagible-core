@@ -8,13 +8,12 @@
 namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
-use Aimeos\Cms\Models\Version;
 use Aimeos\Cms\Models\Element;
 use Aimeos\Cms\Models\File;
 use Aimeos\Cms\Models\Page;
 
 
-class CmsSeeder extends Seeder
+class TestSeeder extends Seeder
 {
     private string $element;
     private string $file;
@@ -31,11 +30,6 @@ class CmsSeeder extends Seeder
             return 'demo';
         };
 
-        File::where('tenant_id', 'demo')->forceDelete();
-        Version::where('tenant_id', 'demo')->forceDelete();
-        Element::where('tenant_id', 'demo')->forceDelete();
-        Page::where('tenant_id', 'demo')->forceDelete();
-
         Page::withoutSyncingToSearch( function() {
             Element::withoutSyncingToSearch( function() {
                 File::withoutSyncingToSearch( function() {
@@ -49,9 +43,11 @@ class CmsSeeder extends Seeder
             } );
         } );
 
-        Page::query()->searchable();
-        Element::query()->searchable();
-        File::query()->searchable();
+        if( config('scout.driver') !== 'collection' ) {
+            Page::query()->searchable();
+            Element::query()->searchable();
+            File::query()->searchable();
+        }
     }
 
 

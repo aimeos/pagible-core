@@ -19,6 +19,7 @@ use Illuminate\Support\Facades\Storage;
 class Utils
 {
     private static int $counter = 0;
+    private static ?\HTMLPurifier $purifier = null;
 
 
     /**
@@ -98,8 +99,6 @@ class Utils
      * @param string|null $text The HTML text to sanitize
      * @return string The sanitized HTML text
      */
-    private static ?\HTMLPurifier $purifier = null;
-
     public static function html( ?string $text ) : string
     {
         if( !self::$purifier )
@@ -107,6 +106,7 @@ class Utils
             $config = \HTMLPurifier_Config::createDefault();
             $config->set( 'Attr.AllowedFrameTargets', ['_blank', '_self'] );
             $config->set( 'Cache.SerializerPath', sys_get_temp_dir() );
+
             self::$purifier = new \HTMLPurifier( $config );
         }
 
@@ -123,18 +123,21 @@ class Utils
     public static function files( Page $page ) : Collection
     {
         $lang = $page->lang;
+        $lang2 = substr( $lang, 0, 2 );
+        $seen = [];
 
-        return Collection::make( (array) $page->content )
-            ->map( fn( $item ) => $item->files ?? [] )
-            ->collapse()
-            ->unique()
-            ->map( fn( $id ) => $page->files[$id] ?? null )
-            ->filter()
-            ->pluck( null, 'id' )
-            ->each( fn( $file ) => $file->description = $file->description->{$lang}
-                ?? $file->description->{substr( $lang, 0, 2 )}
-                ?? null
-        );
+        foreach( (array) $page->content as $item )
+        {
+            foreach( (array) ( $item->files ?? [] ) as $id )
+            {
+                if( !isset( $seen[$id] ) && ( $file = $page->files[$id] ?? null ) ) {
+                    $file->description = $file->description->{$lang} ?? $file->description->{$lang2} ?? null;
+                    $seen[$id] = $file;
+                }
+            }
+        }
+
+        return new Collection( $seen );
     }
 
 
@@ -238,20 +241,20 @@ class Utils
      *
      * @param string $path The file path or URL
      * @return string The MIME type of the file
-     * @throws \RuntimeException If the file cannot be accessed or read
+     * @throws Exception If the file cannot be accessed or read
      */
     public static function mimetype( string $path ) : string
     {
         if( str_starts_with( $path, 'http') )
         {
             if( !self::isValidUrl( $path ) ) {
-                throw new \RuntimeException( 'Invalid URL' );
+                throw new Exception( 'Invalid URL' );
             }
 
             $response = Http::withHeaders( ['Range' => 'bytes=0-299'] )->get( $path );
 
             if( !$response->successful() ) {
-                throw new \RuntimeException( 'URL not accessible' );
+                throw new Exception( 'URL not accessible' );
             }
 
             $buffer = $response->body();
@@ -261,12 +264,12 @@ class Utils
             $stream = Storage::disk( config( 'cms.storage.disk', 'public' ) )->readStream( $path );
 
             if( !$stream ) {
-                throw new \RuntimeException( 'File not accessible' );
+                throw new Exception( 'File not accessible' );
             }
 
             if( ( $buffer = fread( $stream, 300 ) ) === false ) {
                 fclose($stream);
-                throw new \RuntimeException( 'File not readable' );
+                throw new Exception( 'File not readable' );
 
             }
 
@@ -276,7 +279,7 @@ class Utils
         $finfo = new \finfo( FILEINFO_MIME_TYPE );
 
         if( ( $mime = $finfo->buffer( $buffer ) ) === false ) {
-            throw new \RuntimeException( 'Failed to get mime type' );
+            throw new Exception( 'Failed to get mime type' );
         }
 
         return $mime;
