@@ -7,7 +7,6 @@
 
 namespace Aimeos\Cms\Models;
 
-use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\Model;
@@ -31,11 +30,6 @@ use Aimeos\Cms\DB;
  */
 abstract class Base extends Model
 {
-    use HasUuids;
-
-    private static ?bool $isSqlsrv = null;
-
-
     /**
      * Create a new Eloquent Collection without automatic relationship autoloading.
      *
@@ -118,8 +112,7 @@ abstract class Base extends Model
      */
     public function getIdAttribute( $value )
     {
-        self::$isSqlsrv ??= $this->getConnection()->getDriverName() === 'sqlsrv';
-        return self::$isSqlsrv && $value ? strtoupper( $value ) : $value;
+        return $this->getConnection()->getDriverName() === 'sqlsrv' && $value ? strtoupper( $value ) : $value;
     }
 
 
@@ -131,8 +124,7 @@ abstract class Base extends Model
     public function newUniqueId()
     {
         // workaround for SQL Server and Lighthouse when UUIDs are mixed case
-        self::$isSqlsrv ??= $this->getConnection()->getDriverName() === 'sqlsrv';
-        return (string) ( self::$isSqlsrv ? strtoupper( Str::uuid7() ) : Str::uuid7() );
+        return (string) ( $this->getConnection()->getDriverName() === 'sqlsrv' ? strtoupper( Str::uuid7() ) : Str::uuid7() );
     }
 
 

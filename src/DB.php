@@ -7,8 +7,6 @@
 
 namespace Aimeos\Cms;
 
-use Aimeos\Nestedset\NestedSet;
-
 
 /**
  * Database column qualification helpers.
@@ -21,9 +19,9 @@ class DB
      * @var array<string, list<string>>
      */
     public const MODEL_COLUMNS = [
-        'cms_pages' => ['id', 'tenant_id', 'parent_id', NestedSet::DEPTH, NestedSet::LFT, NestedSet::RGT],
-        'cms_files' => ['id', 'tenant_id', 'name', 'mime', 'path'],
+        'cms_pages' => ['id', 'parent_id', '_lft', '_rgt', 'tenant_id'],
         'cms_elements' => ['id', 'tenant_id', 'type', 'name'],
+        'cms_files' => ['id', 'tenant_id', 'name', 'mime', 'path'],
     ];
 
 

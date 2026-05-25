@@ -19,7 +19,6 @@ use Illuminate\Support\Facades\Storage;
 class Utils
 {
     private static int $counter = 0;
-    private static ?\HTMLPurifier $purifier = null;
 
 
     /**
@@ -99,6 +98,8 @@ class Utils
      * @param string|null $text The HTML text to sanitize
      * @return string The sanitized HTML text
      */
+    private static ?\HTMLPurifier $purifier = null;
+
     public static function html( ?string $text ) : string
     {
         if( !self::$purifier )
@@ -106,7 +107,6 @@ class Utils
             $config = \HTMLPurifier_Config::createDefault();
             $config->set( 'Attr.AllowedFrameTargets', ['_blank', '_self'] );
             $config->set( 'Cache.SerializerPath', sys_get_temp_dir() );
-
             self::$purifier = new \HTMLPurifier( $config );
         }
 
@@ -123,21 +123,18 @@ class Utils
     public static function files( Page $page ) : Collection
     {
         $lang = $page->lang;
-        $lang2 = substr( $lang, 0, 2 );
-        $seen = [];
 
-        foreach( (array) $page->content as $item )
-        {
-            foreach( (array) ( $item->files ?? [] ) as $id )
-            {
-                if( !isset( $seen[$id] ) && ( $file = $page->files[$id] ?? null ) ) {
-                    $file->description = $file->description->{$lang} ?? $file->description->{$lang2} ?? null;
-                    $seen[$id] = $file;
-                }
-            }
-        }
-
-        return new Collection( $seen );
+        return Collection::make( (array) $page->content )
+            ->map( fn( $item ) => $item->files ?? [] )
+            ->collapse()
+            ->unique()
+            ->map( fn( $id ) => $page->files[$id] ?? null )
+            ->filter()
+            ->pluck( null, 'id' )
+            ->each( fn( $file ) => $file->description = $file->description->{$lang}
+                ?? $file->description->{substr( $lang, 0, 2 )}
+                ?? null
+        );
     }
 
 

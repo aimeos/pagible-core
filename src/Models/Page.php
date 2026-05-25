@@ -7,10 +7,8 @@
 
 namespace Aimeos\Cms\Models;
 
-use Aimeos\Cms\Concerns\HasChanged;
 use Aimeos\Cms\Concerns\Tenancy;
 use Aimeos\Nestedset\NodeTrait;
-use Aimeos\Nestedset\NestedSet;
 use Aimeos\Nestedset\AncestorsRelation;
 use Aimeos\Nestedset\DescendantsRelation;
 use Illuminate\Database\Eloquent\Casts\Attribute;
@@ -60,7 +58,6 @@ use Laravel\Scout\Searchable;
  */
 class Page extends Base
 {
-    use HasChanged;
     use HasUuids;
     use NodeTrait;
     use SoftDeletes;
@@ -69,16 +66,6 @@ class Page extends Base
     use Searchable {
         NodeTrait::usesSoftDelete insteadof Searchable;
     }
-
-
-    /** @var list<string> Columns needed for memory-efficient Page queries */
-    public const SELECT_COLUMNS = [
-        'id', 'tenant_id', 'parent_id', 'related_id', 'path', 'domain', 'name', 'title',
-        'tag', 'to', 'type', 'theme', 'meta', 'content', 'status', 'cache',
-        'editor', 'latest_id', 'created_at', 'updated_at', 'deleted_at',
-        NestedSet::LFT, NestedSet::RGT, NestedSet::DEPTH
-    ];
-
 
 
     /**
@@ -177,12 +164,13 @@ class Page extends Base
         $root = $id ? static::withTrashed()->findOrFail( $id ) : null;
         $maxDepth = ( $root?->getDepth() ?? 0 ) + config( 'cms.navdepth', 2 );
 
-        $lft = NestedSet::LFT;
-        $rgt = NestedSet::RGT;
-        $depth = NestedSet::DEPTH;
+        $lft = \Aimeos\Nestedset\NestedSet::LFT;
+        $rgt = \Aimeos\Nestedset\NestedSet::RGT;
+        $depth = \Aimeos\Nestedset\NestedSet::DEPTH;
 
         $builder = Nav::withTrashed()
-            ->select( 'id', 'parent_id', 'name', 'title', 'tag', 'type', 'path', 'domain', 'lang', 'to', 'status', 'latest_id', $lft, $rgt, $depth )
+            ->select( 'id', 'parent_id', 'name', 'title', 'tag', 'path', 'domain', 'lang', 'to', 'status', 'config', 'latest_id', $lft, $rgt, $depth )
+            ->with( 'latest' )
             ->orderBy( $lft );
 
         if( $root ) {
@@ -209,11 +197,11 @@ class Page extends Base
             . ( $this->title ?? '' ) . "\n"
             . ( $this->meta->{'meta-tags'}->data->description ?? '' ) . "\n";
 
-        $config = \Aimeos\Cms\Schema::schemas( section: 'content' );
+        $config = config( 'cms.schemas.content', [] );
 
         foreach( collect( (array) $this->content )->merge( $this->elements ) as $el )
         {
-            $fields = (array) ( $config[$el->type ?? '']['fields'] ?? [] );
+            $fields = (array) ( $config[@$el->type]['fields'] ?? [] );
 
             if( empty( $fields ) ) {
                 continue;
@@ -397,7 +385,7 @@ class Page extends Base
             ->orderBy( $lft );
 
         if( \Aimeos\Cms\Permission::can( 'page:view', Auth::user() ) ) {
-            $builder->with( ['latest' => fn( $q ) => $q->select( 'id', 'data' )] );
+            $builder->with( 'latest' );
         }
 
         return $builder->get()->toTree();
@@ -426,9 +414,7 @@ class Page extends Base
      */
     public function prunable() : Builder
     {
-        return static::withoutTenancy()
-            ->select( 'id', 'tenant_id', 'parent_id', 'deleted_at', NestedSet::LFT, NestedSet::RGT, NestedSet::DEPTH )
-            ->where( 'deleted_at', '<=', now()->subDays( config( 'cms.prune', 30 ) ) );
+        return static::withoutTenancy()->where( 'deleted_at', '<=', now()->subDays( config( 'cms.prune', 30 ) ) );
     }
 
 
@@ -440,13 +426,10 @@ class Page extends Base
      */
     public function publish( Version $version ) : self
     {
-        $version->relationLoaded( 'files' ) ?: $version->load( ['files' => fn( $q ) => $q->select( 'cms_files.id' )] );
-        $version->relationLoaded( 'elements' ) ?: $version->load( ['elements' => fn( $q ) => $q->select( 'cms_elements.id' )] );
+        $this->files()->sync( $version->files ?? [] );
+        $this->elements()->sync( $version->elements ?? [] );
 
-        $this->files()->sync( $version->getRelation( 'files' )->modelKeys() );
-        $this->elements()->sync( $version->getRelation( 'elements' )->modelKeys() );
-
-        $this->forceFill( array_intersect_key( (array) $version->data, array_flip( $this->getFillable() ) ) );
+        $this->fill( (array) $version->data );
         $this->content = $version->aux->content ?? [];
         $this->config = $version->aux->config ?? new \stdClass();
         $this->meta = $version->aux->meta ?? new \stdClass();
@@ -507,7 +490,7 @@ class Page extends Base
             ->defaultOrder();
 
         if( \Aimeos\Cms\Permission::can( 'page:view', Auth::user() ) ) {
-            $builder->with( ['latest' => fn( $q ) => $q->select( 'id', 'data' )] );
+            $builder->with( 'latest' );
         }
 
         return new DescendantsRelation( $builder->setModel( new Nav() ), $this );
@@ -551,26 +534,23 @@ class Page extends Base
             ) );
         }
 
-        $version = $this->latest;
-        $data = $version?->data;
-
         return [
             'content' => $content,
             'draft' => $draft,
-            'domain' => $data->domain ?? '',
-            'lang' => $version->lang ?? '',
+            'domain' => $this->latest?->data->domain ?? '',
+            'lang' => $this->latest->lang ?? '',
             'tenant_id' => $this->tenant_id ?? '',
             'parent_id' => $this->parent_id,
-            'editor' => $version->editor ?? '',
-            'status' => (int) ( $data->status ?? 0 ),
-            'cache' => (int) ( $data->cache ?? 0 ),
-            'to' => $data->to ?? '',
-            'path' => $data->path ?? '',
-            'tag' => $data->tag ?? '',
-            'theme' => $data->theme ?? '',
-            'type' => $data->type ?? '',
-            'published' => (bool) ( $version->published ?? false ),
-            'scheduled' => (int) ( $data->scheduled ?? 0 ),
+            'editor' => $this->latest->editor ?? '',
+            'status' => (int) ( $this->latest?->data->status ?? 0 ),
+            'cache' => (int) ( $this->latest?->data->cache ?? 0 ),
+            'to' => $this->latest?->data->to ?? '',
+            'path' => $this->latest?->data->path ?? '',
+            'tag' => $this->latest?->data->tag ?? '',
+            'theme' => $this->latest?->data->theme ?? '',
+            'type' => $this->latest?->data->type ?? '',
+            'published' => (bool) ( $this->latest->published ?? false ),
+            'scheduled' => (int) ( $this->latest?->data->scheduled ?? 0 ),
         ];
     }
 
@@ -583,11 +563,7 @@ class Page extends Base
      */
     protected function makeAllSearchableUsing( $query )
     {
-        return $query->select( self::SELECT_COLUMNS )->with( [
-            'elements' => fn( $q ) => $q->select( Element::SELECT_COLS ),
-            'latest' => fn( $q ) => $q->select( 'id', 'versionable_id', 'data', 'aux', 'lang', 'editor', 'published' ),
-            'latest.elements' => fn( $q ) => $q->select( Element::SELECT_COLS ),
-        ] );
+        return $query->with( ['elements', 'latest.elements'] );
     }
 
 

@@ -15,6 +15,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 
 
 /**
@@ -37,9 +38,6 @@ class Version extends Model
 {
     use HasUuids;
     use Tenancy;
-
-    private static ?bool $isSqlsrv = null;
-
 
 
     /**
@@ -125,35 +123,29 @@ class Version extends Model
     public function __toString() : string
     {
         $data = $this->data ?? new \stdClass();
-        $parts = [
-            $data->tag ?? '',
-            $data->name ?? '',
-            $data->title ?? '',
-            $this->aux->meta->{'meta-tags'}->data->description ?? '',
-        ];
+        $content = ( $data->tag ?? '' ) . "\n"
+            . ( $data->name ?? '' ) . "\n"
+            . ( $data->title ?? '' ) . "\n"
+            . ( $this->aux->meta->{'meta-tags'}->data->description ?? '' ) . "\n";
 
         foreach( (array) ( $data->description ?? [] ) as $lang => $value ) {
-            $parts[] = $lang . ":\n" . $value;
+            $content .= $lang . ":\n" . $value . "\n";
         }
 
         foreach( (array) ( $data->transcription ?? [] ) as $lang => $value ) {
-            $parts[] = $lang . ":\n" . $value;
+            $content .= $lang . ":\n" . $value . "\n";
         }
 
-        $config = \Aimeos\Cms\Schema::schemas( section: 'content' );
-        $items = (array) ( $this->aux->content ?? [] );
+        $config = config( 'cms.schemas.content', [] );
+        $items = collect( (array) ( $this->aux->content ?? [] ) );
 
-        if( !empty( $items ) && $this->relationLoaded( 'elements' ) ) {
-            foreach( $this->getRelation( 'elements' ) as $el ) {
-                $items[] = $el;
-            }
+        if( $items->isNotEmpty() ) {
+            $items = $items->merge( $this->elements );
         }
 
-        $items[] = $data;
-
-        foreach( $items as $el )
+        foreach( $items->push( $data ) as $el )
         {
-            $fields = (array) ( $config[$el->type ?? '']['fields'] ?? [] );
+            $fields = (array) ( $config[@$el->type]['fields'] ?? [] );
 
             if( empty( $fields ) ) {
                 continue;
@@ -165,12 +157,12 @@ class Version extends Model
                     && ( $fields[$name]['searchable'] ?? true )
                     && in_array( $fields[$name]['type'], ['markdown', 'plaintext', 'string', 'text'] )
                 ) {
-                    $parts[] = $value;
+                    $content .= $value . "\n";
                 }
             }
         }
 
-        return trim( implode( "\n", $parts ) );
+        return trim( $content );
     }
 
 
@@ -279,8 +271,7 @@ class Version extends Model
      */
     public function getIdAttribute( $value )
     {
-        self::$isSqlsrv ??= $this->getConnection()->getDriverName() === 'sqlsrv';
-        return self::$isSqlsrv && $value ? strtoupper( $value ) : $value;
+        return $this->getConnection()->getDriverName() === 'sqlsrv' && $value ? strtoupper( $value ) : $value;
     }
 
 
@@ -292,8 +283,7 @@ class Version extends Model
     public function newUniqueId()
     {
         // workaround for SQL Server and Lighthouse when UUIDs are mixed case
-        self::$isSqlsrv ??= $this->getConnection()->getDriverName() === 'sqlsrv';
-        return (string) ( self::$isSqlsrv ? strtoupper( \Illuminate\Support\Str::uuid7() ) : \Illuminate\Support\Str::uuid7() );
+        return (string) ( $this->getConnection()->getDriverName() === 'sqlsrv' ? strtoupper( Str::uuid7() ) : Str::uuid7() );
     }
 
 

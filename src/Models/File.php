@@ -7,7 +7,6 @@
 
 namespace Aimeos\Cms\Models;
 
-use Aimeos\Cms\Concerns\HasChanged;
 use Aimeos\Cms\Concerns\Tenancy;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
@@ -18,7 +17,6 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Http\UploadedFile;
-use Intervention\Image\Interfaces\DriverInterface;
 use Intervention\Image\ImageManager;
 use Laravel\Scout\Searchable;
 
@@ -40,22 +38,15 @@ use Laravel\Scout\Searchable;
  * @property \Illuminate\Support\Carbon|null $updated_at
  * @property string|null $latest_id
  * @property \Illuminate\Support\Carbon|null $deleted_at
- * @property-read \Illuminate\Database\Eloquent\Collection<int, Page> $bypages
- * @property-read \Illuminate\Database\Eloquent\Collection<int, Element> $byelements
  * @method static \Illuminate\Database\Eloquent\Builder<static> withoutTenancy()
  */
 class File extends Base
 {
-    use HasChanged;
     use HasUuids;
     use SoftDeletes;
     use Searchable;
     use Prunable;
     use Tenancy;
-
-
-    /** @var list<string> Columns for eager-loading file relations */
-    public const SELECT_COLS = ['cms_files.id', 'name', 'mime', 'path', 'previews', 'description', 'transcription'];
 
 
     /**
@@ -132,17 +123,17 @@ class File extends Base
      */
     public function __toString() : string
     {
-        $parts = [$this->name ?? ''];
+        $content = ( $this->name ?? '' ) . "\n";
 
         foreach( (array) $this->description as $lang => $value ) {
-            $parts[] = $lang . ":\n" . $value;
+            $content .= $lang . ":\n" . $value . "\n";
         }
 
         foreach( (array) $this->transcription as $lang => $value ) {
-            $parts[] = $lang . ":\n" . $value;
+            $content .= $lang . ":\n" . $value . "\n";
         }
 
-        return trim( implode( "\n", $parts ) );
+        return trim( $content );
     }
 
 
@@ -164,28 +155,17 @@ class File extends Base
         $dir = rtrim( 'cms/' . \Aimeos\Cms\Tenancy::value(), '/' );
 
         $name = $this->filename( $upload->getClientOriginalName() );
+        $content = file_get_contents( $upload->getRealPath() );
         $path = $dir . '/' . $name;
 
-        if( $upload->getMimeType() === 'image/svg+xml' )
-        {
-            $content = file_get_contents( $upload->getRealPath() );
-
-            if( !( $content = \Aimeos\Cms\Utils::cleanSvg( $content ) ) ) {
-                $msg = 'Invalid file "%s"';
-                throw new \RuntimeException( sprintf( $msg, $upload->getClientOriginalName() ) );
-            }
-
-            if( !$disk->put( $path, $content ) ) {
-                $msg = 'Unable to store file "%s" to "%s"';
-                throw new \RuntimeException( sprintf( $msg, $upload->getClientOriginalName(), $path ) );
-            }
+        if( $upload->getMimeType() === 'image/svg+xml' && !( $content = \Aimeos\Cms\Utils::cleanSvg( $content ) ) ) {
+            $msg = 'Invalid file "%s"';
+            throw new \RuntimeException( sprintf( $msg, $upload->getClientOriginalName() ) );
         }
-        else
-        {
-            if( !$disk->putFileAs( $dir, $upload, $name ) ) {
-                $msg = 'Unable to store file "%s" to "%s"';
-                throw new \RuntimeException( sprintf( $msg, $upload->getClientOriginalName(), $path ) );
-            }
+
+        if( !$content || !$disk->put( $path, $content ) ) {
+            $msg = 'Unable to store file "%s" to "%s"';
+            throw new \RuntimeException( sprintf( $msg, $upload->getClientOriginalName(), $path ) );
         }
 
         $this->path = $path;
@@ -205,16 +185,12 @@ class File extends Base
         $disk = Storage::disk( config( 'cms.disk', 'public' ) );
         $dir = rtrim( 'cms/' . \Aimeos\Cms\Tenancy::value(), '/' );
 
-        /** @var ImageManager $manager */
-        $manager = ImageManager::withDriver( '\\Intervention\\Image\\Drivers\\' . ucFirst( config( 'cms.image.driver', 'gd' ) ) . '\Driver' );
+        $driver = ucFirst( config( 'cms.image.driver', 'gd' ) );
+        $manager = ImageManager::withDriver( '\\Intervention\\Image\\Drivers\\' . $driver . '\Driver' );
         $ext = $manager->driver()->supports( 'image/webp' ) ? 'webp' : 'jpg';
 
         if( is_string( $resource ) && \Aimeos\Cms\Utils::isValidUrl( $resource ) ) {
-            $resource = $this->fetchUrl( $resource, $manager->driver() );
-
-            if( !is_resource( $resource ) ) {
-                return $this;
-            }
+            $resource = Http::withOptions( ['stream' => true] )->get( $resource )->toPsrResponse()->getBody()->detach();
         }
 
         if( $resource instanceof UploadedFile ) {
@@ -234,30 +210,18 @@ class File extends Base
         $this->previews = [];
         $map = [];
 
-        try
+        foreach( $sizes as $size )
         {
-            foreach( $sizes as $size )
-            {
-                $image = ( clone $file )->scaleDown( $size['width'] ?? null, $size['height'] ?? null );
-                $ptr = $image->encodeByExtension( $ext, quality: 90 )->toFilePointer();
-                $path = $dir . '/' . $this->filename( $filename, $ext, $size );
+            $image = ( clone $file )->scaleDown( $size['width'] ?? null, $size['height'] ?? null );
+            $ptr = $image->encodeByExtension( $ext, quality: 90 )->toFilePointer();
+            $path = $dir . '/' . $this->filename( $filename, $ext, $size );
 
-                if( !$disk->put( $path, $ptr ) ) {
-                    throw new \RuntimeException( sprintf( 'Unable to store preview "%s"', $path ) );
-                }
-
+            if( $disk->put( $path, $ptr, 'public' ) ) {
                 $map[$image->width()] = $path;
-                unset( $image, $ptr );
             }
-        }
-        catch( \Throwable $t )
-        {
-            $disk->delete( array_values( $map ) );
-            throw $t;
-        }
 
-        $this->previews = $map;
-        unset( $file );
+            $this->previews = $map;
+        }
 
         return $this;
     }
@@ -319,9 +283,7 @@ class File extends Base
      */
     public function prunable() : Builder
     {
-        return static::withoutTenancy()
-            ->select( 'id', 'tenant_id', 'path', 'previews', 'deleted_at' )
-            ->where( 'deleted_at', '<=', now()->subDays( config( 'cms.prune', 30 ) ) )
+        return static::withoutTenancy()->where( 'deleted_at', '<=', now()->subDays( config( 'cms.prune', 30 ) ) )
             ->doesntHave( 'versions' )->doesntHave( 'bypages' )->doesntHave( 'byelements' );
     }
 
@@ -337,7 +299,7 @@ class File extends Base
         $path = $this->path;
         $previews = $this->previews;
 
-        $this->forceFill( array_intersect_key( (array) $version->data, array_flip( $this->getFillable() ) ) );
+        $this->fill( (array) $version->data );
         $this->previews = (array) $version->data?->previews;
         $this->path = $version->data?->path;
         $this->mime = $version->data?->mime;
@@ -348,6 +310,24 @@ class File extends Base
         if( !$version->published ) {
             $version->published = true;
             $version->save();
+        }
+
+        $num = Version::where( 'versionable_id', $this->id )
+            ->where( 'versionable_type', File::class )
+            ->where( 'data->path', $path )
+            ->count();
+
+        if( $num === 0 )
+        {
+            $disk = Storage::disk( config( 'cms.disk', 'public' ) );
+
+            if( $path ) {
+                $disk->delete( $path );
+            }
+
+            foreach( (array) $previews as $filepath ) {
+                $disk->delete( $filepath );
+            }
         }
 
         return $this;
@@ -373,7 +353,7 @@ class File extends Base
      */
     public function removeFile() : self
     {
-        if( $this->path && !str_starts_with( $this->path, 'http' ) ) {
+        if( $this->path && str_starts_with( $this->path, 'http' ) ) {
             Storage::disk( config( 'cms.disk', 'public' ) )->delete( $this->path );
         }
 
@@ -391,13 +371,12 @@ class File extends Base
     {
         $disk = Storage::disk( config( 'cms.disk', 'public' ) );
 
-        $previews = array_values( (array) $this->previews );
-
-        if( !empty( $previews ) ) {
-            $disk->delete( $previews );
+        foreach( (array) $this->previews as $path )
+        {
+            $disk->delete( $path );
+            unset( $this->previews[$path] );
         }
 
-        $this->previews = [];
         return $this;
     }
 
@@ -412,43 +391,44 @@ class File extends Base
     {
         $num = config( 'cms.versions', 10 );
 
-        $drop = Version::where( 'versionable_id', $this->id )
+        $versions = Version::where( 'versionable_id', $this->id )
             ->where( 'versionable_type', File::class )
             ->orderByDesc( 'created_at' )
-            ->offset( $num )
-            ->limit( 10 )
-            ->get( ['id', 'data'] );
+            ->limit( $num + 10 ) // keep $num versions, delete up to 10 older versions
+            ->get();
 
-        if( $drop->isEmpty() ) {
+        if( $versions->count() <= $num ) {
             return $this;
         }
 
-        $keep = Version::where( 'versionable_id', $this->id )
-            ->where( 'versionable_type', File::class )
-            ->orderByDesc( 'created_at' )
-            ->limit( $num )
-            ->pluck( 'data->path' )
-            ->push( $this->path )
-            ->filter();
+        $paths = [(string) $this->path => true];
 
-        $rmPaths = $drop->flatMap( function( $v ) {
-            $paths = array_values( (array) ( $v->data->previews ?? [] ) );
-
-            if( $v->data?->path && !str_starts_with( (string) $v->data->path, 'http' ) ) {
-                $paths[] = $v->data->path;
+        foreach( $versions->slice( $num ) as $version )
+        {
+            if( $version->data?->path ) {
+                $paths[(string) $version->data->path] = true;
             }
-
-            return $paths;
-        } )
-        ->filter()
-        ->unique()
-        ->diff( $keep );
-
-        if( !$rmPaths->isEmpty() ) {
-            Storage::disk( config( 'cms.disk', 'public' ) )->delete( $rmPaths );
         }
 
-        Version::whereIn( 'id', $drop->pluck( 'id' ) )->forceDelete();
+        $toDelete = $versions->skip( $num );
+        $disk = Storage::disk( config( 'cms.storage.disk', 'public' ) );
+
+        foreach( $toDelete as $version )
+        {
+            if( !$version->data?->path || isset( $paths[(string) $version->data->path] ) ) {
+                continue;
+            }
+
+            $disk->delete( (string) $version->data->path );
+
+            foreach( (array) ($version->data->previews ?? []) as $path ) {
+                $disk->delete( $path );
+            }
+        }
+
+        Version::whereIn( 'versionable_id', $toDelete->pluck( 'id' ) )
+            ->where( 'versionable_type', File::class )
+            ->forceDelete();
 
         return $this;
     }
@@ -467,17 +447,15 @@ class File extends Base
             return [];
         }
 
-        $version = $this->latest;
-
         return [
             'content' => $this->trashed() ? '' : mb_strtolower( (string) $this ),
-            'draft' => mb_strtolower( (string) $version ),
+            'draft' => mb_strtolower( (string) $this->latest ),
             'tenant_id' => $this->tenant_id ?? '',
-            'lang' => $version?->lang,
-            'editor' => $version->editor ?? '',
-            'mime' => $version?->data->mime ?? '',
-            'published' => (bool) ( $version->published ?? false ),
-            'scheduled' => (int) ( $version?->data->scheduled ?? 0 ),
+            'lang' => $this->latest?->lang,
+            'editor' => $this->latest->editor ?? '',
+            'mime' => $this->latest?->data->mime ?? '',
+            'published' => (bool) ( $this->latest->published ?? false ),
+            'scheduled' => (int) ( $this->latest?->data->scheduled ?? 0 ),
         ];
     }
 
@@ -490,7 +468,7 @@ class File extends Base
      */
     protected function makeAllSearchableUsing( $query )
     {
-        return $query->with( ['latest' => fn( $q ) => $q->select( 'id', 'versionable_id', 'data', 'lang', 'editor', 'published' )] );
+        return $query->with( 'latest' );
     }
 
 
@@ -517,45 +495,6 @@ class File extends Base
         return Attribute::make(
             set: fn( $value ) => json_encode( $value ),
         );
-    }
-
-
-    /**
-     * Fetches a URL as stream, detects MIME from first 4KB, downloads to tmpfile for images.
-     *
-     * @param string $url URL to fetch
-     * @param DriverInterface $driver Image driver for format support check
-     * @return resource|null Seekable tmpfile resource or null if not an image
-     */
-    protected function fetchUrl( string $url, DriverInterface $driver )
-    {
-        $response = Http::withOptions( ['stream' => true] )->get( $url );
-
-        if( !$response->successful() ) {
-            throw new \RuntimeException( sprintf( 'Failed to download "%s"', $url ) );
-        }
-
-        $body = $response->toPsrResponse()->getBody();
-        $bytes = $body->read( 4096 );
-
-        $this->mime = ( new \finfo( FILEINFO_MIME_TYPE ) )->buffer( $bytes ) ?: 'application/octet-stream';
-
-        if( !$driver->supports( $this->mime ) ) {
-            $body->close();
-            return null;
-        }
-
-        $tmp = tmpfile();
-        fwrite( $tmp, $bytes );
-
-        while( !$body->eof() ) {
-            fwrite( $tmp, $body->read( 1048576 ) );
-        }
-
-        $body->close();
-        fseek( $tmp, 0 );
-
-        return $tmp;
     }
 
 
@@ -587,24 +526,18 @@ class File extends Base
     {
         $store = Storage::disk( config( 'cms.disk', 'public' ) );
 
-        Version::select( 'id', 'data' )->where( 'versionable_id', $this->id )
+        Version::where( 'versionable_id', $this->id )
             ->where( 'versionable_type', File::class )
-            ->chunk( 50, function( $versions ) use ( $store ) {
-
-                $paths = $versions->flatMap( function( $v ) {
-                    $paths = array_values( (array) ( $v->data->previews ?? [] ) );
-
-                    if( $v->data?->path && !str_starts_with( (string) $v->data->path, 'http' ) ) {
-                        $paths[] = $v->data->path;
+            ->chunk( 100, function( $versions ) use ( $store ) {
+                foreach( $versions as $version )
+                {
+                    foreach( $version->data->previews ?? [] as $path ) {
+                        $store->delete( $path );
                     }
 
-                    return $paths;
-                } )
-                ->filter()
-                ->unique();
-
-                if( !$paths->isEmpty() ) {
-                    $store->delete( $paths );
+                    if( $version->data?->path ) {
+                        $store->delete( $version->data->path );
+                    }
                 }
             } );
 
@@ -612,14 +545,12 @@ class File extends Base
             ->where( 'versionable_type', File::class )
             ->delete();
 
-        $paths = array_values( (array) $this->previews );
-
-        if( !str_starts_with( (string) $this->path, 'http' ) ) {
-            $paths[] = $this->path;
+        foreach( (array) $this->previews as $path ) {
+            $store->delete( $path );
         }
 
-        if( !empty( $paths ) ) {
-            $store->delete( $paths );
+        if( $this->path ) {
+            $store->delete( $this->path );
         }
     }
 

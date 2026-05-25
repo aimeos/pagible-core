@@ -7,7 +7,6 @@
 
 namespace Aimeos\Cms\Models;
 
-use Aimeos\Cms\Concerns\HasChanged;
 use Aimeos\Cms\Concerns\Tenancy;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
@@ -32,21 +31,15 @@ use Laravel\Scout\Searchable;
  * @property \Illuminate\Support\Carbon|null $updated_at
  * @property string|null $latest_id
  * @property \Illuminate\Support\Carbon|null $deleted_at
- * @property-read \Illuminate\Database\Eloquent\Collection<int, Page> $bypages
  * @method static \Illuminate\Database\Eloquent\Builder<static> withoutTenancy()
  */
 class Element extends Base
 {
-    use HasChanged;
     use HasUuids;
     use SoftDeletes;
     use Searchable;
     use Prunable;
     use Tenancy;
-
-
-    /** @var list<string> Columns for eager-loading element relations */
-    public const SELECT_COLS = ['cms_elements.id', 'type', 'data'];
 
 
     /**
@@ -103,9 +96,9 @@ class Element extends Base
      */
     public function __toString() : string
     {
-        $parts = [$this->name ?? ''];
-        $config = \Aimeos\Cms\Schema::schemas( section: 'content' );
-        $fields = (array) ( $config[$this->data->type ?? '']['fields'] ?? [] );
+        $content = ( $this->name ?? '' ) . "\n";
+        $config = config( 'cms.schemas.content', [] );
+        $fields = (array) ( $config[@$this->data->type]['fields'] ?? [] );
 
         foreach( (array) ( $this->data->data ?? [] ) as $name => $value )
         {
@@ -113,11 +106,11 @@ class Element extends Base
                 && ( $fields[$name]['searchable'] ?? true )
                 && in_array( $fields[$name]['type'], ['markdown', 'plaintext', 'string', 'text'] )
             ) {
-                $parts[] = $value;
+                $content .= $value . "\n";
             }
         }
 
-        return trim( implode( "\n", $parts ) );
+        return trim( $content );
     }
 
 
@@ -191,9 +184,7 @@ class Element extends Base
      */
     public function prunable() : Builder
     {
-        return static::withoutTenancy()
-            ->select( 'id', 'tenant_id', 'deleted_at' )
-            ->where( 'deleted_at', '<=', now()->subDays( config( 'cms.prune', 30 ) ) );
+        return static::withoutTenancy()->where( 'deleted_at', '<=', now()->subDays( config( 'cms.prune', 30 ) ) );
     }
 
 
@@ -205,12 +196,9 @@ class Element extends Base
      */
     public function publish( Version $version ) : self
     {
-        $fileIds = $version->relationLoaded( 'files' )
-            ? $version->getRelation( 'files' )->modelKeys()
-            : $version->files()->pluck( 'id' )->all();
-        $this->files()->sync( $fileIds );
+        $this->files()->sync( $version->files ?? [] );
 
-        $this->forceFill( array_intersect_key( (array) $version->data, array_flip( $this->getFillable() ) ) );
+        $this->fill( (array) $version->data );
         $this->editor = $version->editor;
         $this->lang = $version->lang;
         $this->setRelation( 'latest', $version );
@@ -259,7 +247,7 @@ class Element extends Base
      */
     protected function makeAllSearchableUsing( $query )
     {
-        return $query->with( ['latest' => fn( $q ) => $q->select( 'id', 'versionable_id', 'data', 'lang', 'editor', 'published' )] );
+        return $query->with( 'latest' );
     }
 
 
