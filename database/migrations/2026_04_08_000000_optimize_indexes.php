@@ -246,7 +246,7 @@ return new class extends Migration
             );
         } else {
             $this->addIndex($schema, 'cms_pages', ['deleted_at', 'tenant_id', '_lft', '_rgt', 'latest_id']);
-            $this->addIndex($schema, 'cms_pages', ['tenant_id', 'deleted_at', 'status', 'to', 'path', 'domain', 'updated_at']);
+            $this->addIndex($schema, 'cms_pages', ['tenant_id', 'deleted_at', 'status', 'to', 'path', 'domain', 'updated_at'], 'cms_pages_sitemap_index');
         }
     }
 

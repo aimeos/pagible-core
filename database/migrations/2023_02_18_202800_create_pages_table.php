@@ -70,7 +70,7 @@ return new class extends Migration
                 $table->index(['deleted_at', 'tenant_id', 'depth', '_lft', '_rgt', 'id', 'parent_id', 'name', 'title', 'tag', 'type', 'path', 'domain', 'lang', 'to', 'status', 'latest_id', 'config', 'updated_at'], 'cms_pages_covering_index');
             } else {
                 $table->index(['deleted_at', 'tenant_id', '_lft', '_rgt', 'latest_id']);
-                $table->index(['tenant_id', 'deleted_at', 'status', 'to', 'path', 'domain', 'updated_at']);
+                $table->index(['tenant_id', 'deleted_at', 'status', 'to', 'path', 'domain', 'updated_at'], 'cms_pages_sitemap_index');
             }
         });
     }
