@@ -67,9 +67,10 @@ return new class extends Migration
             $driver = Schema::connection($name)->getConnection()->getDriverName();
 
             if( $driver === 'sqlite' ) {
-                $table->index(['deleted_at', 'tenant_id', 'depth', '_lft', '_rgt', 'id', 'parent_id', 'name', 'title', 'tag', 'path', 'domain', 'lang', 'to', 'status', 'config'], 'cms_pages_covering_index');
+                $table->index(['deleted_at', 'tenant_id', 'depth', '_lft', '_rgt', 'id', 'parent_id', 'name', 'title', 'tag', 'type', 'path', 'domain', 'lang', 'to', 'status', 'latest_id', 'config', 'updated_at'], 'cms_pages_covering_index');
             } else {
                 $table->index(['deleted_at', 'tenant_id', '_lft', '_rgt', 'latest_id']);
+                $table->index(['tenant_id', 'deleted_at', 'status', 'to', 'path', 'domain', 'updated_at']);
             }
         });
     }

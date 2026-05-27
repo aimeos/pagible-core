@@ -241,11 +241,12 @@ return new class extends Migration
             $this->addIndex(
                 $schema,
                 'cms_pages',
-                ['deleted_at', 'tenant_id', 'depth', '_lft', '_rgt', 'id', 'parent_id', 'name', 'title', 'tag', 'path', 'domain', 'lang', 'to', 'status', 'config'],
+                ['deleted_at', 'tenant_id', 'depth', '_lft', '_rgt', 'id', 'parent_id', 'name', 'title', 'tag', 'type', 'path', 'domain', 'lang', 'to', 'status', 'latest_id', 'config', 'updated_at'],
                 'cms_pages_covering_index'
             );
         } else {
             $this->addIndex($schema, 'cms_pages', ['deleted_at', 'tenant_id', '_lft', '_rgt', 'latest_id']);
+            $this->addIndex($schema, 'cms_pages', ['tenant_id', 'deleted_at', 'status', 'to', 'path', 'domain', 'updated_at']);
         }
     }
 
