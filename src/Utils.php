@@ -35,6 +35,23 @@ class Utils
 
 
     /**
+     * Formats a number of seconds as a "HH:MM:SS.mmm" timestamp.
+     *
+     * @param float $seconds Time in seconds
+     * @return string Formatted timestamp, e.g. "00:01:23.500"
+     */
+    public static function formatSeconds( float $seconds ) : string
+    {
+        $hours = floor( $seconds / 3600 );
+        $minutes = floor( ( $seconds % 3600 ) / 60 );
+        $secs = floor( $seconds % 60 );
+        $millis = ( $seconds - floor( $seconds ) ) * 1000;
+
+        return sprintf( "%02d:%02d:%02d.%03d", $hours, $minutes, $secs, $millis );
+    }
+
+
+    /**
      * Executes a callback within a database transaction using the CMS connection.
      *
      * @template T
@@ -247,11 +264,9 @@ class Utils
     {
         if( str_starts_with( $path, 'http') )
         {
-            if( !self::isValidUrl( $path ) ) {
-                throw new Exception( 'Invalid URL' );
-            }
-
-            $response = Http::withHeaders( ['Range' => 'bytes=0-299'] )->get( $path );
+            $response = Http::withHeaders( ['Range' => 'bytes=0-299'] )
+                ->withOptions( self::safeHttp( $path ) )
+                ->get( $path );
 
             if( !$response->successful() ) {
                 throw new Exception( 'URL not accessible' );
@@ -304,6 +319,47 @@ class Utils
         }
 
         return null;
+    }
+
+
+    /**
+     * Returns Guzzle HTTP options that mitigate SSRF for the given URL.
+     *
+     * Validates the URL, pins the host to its resolved public IP (preventing
+     * DNS rebinding) and blocks redirects to private or reserved addresses.
+     *
+     * @param string $url The http(s) URL that will be fetched
+     * @return array<string, mixed> Options to pass to Http::withOptions()
+     * @throws Exception If the URL is invalid or resolves to a non-public address
+     */
+    public static function safeHttp( string $url ) : array
+    {
+        if( !self::isValidUrl( $url ) ) {
+            throw new Exception( sprintf( 'Invalid or unsafe URL "%s"', $url ) );
+        }
+
+        $parsed = (array) parse_url( $url );
+        $host = (string) ( $parsed['host'] ?? '' );
+        $port = $parsed['port'] ?? ( ( $parsed['scheme'] ?? '' ) === 'https' ? 443 : 80 );
+
+        if( !( $ip = self::resolve( $host ) ) ) {
+            throw new Exception( sprintf( 'Host "%s" does not resolve to a public address', $host ) );
+        }
+
+        return [
+            'verify' => true,
+            'connect_timeout' => 10,
+            'allow_redirects' => [
+                'max' => 2,
+                'strict' => true,
+                'on_redirect' => function( $request, $response, \Psr\Http\Message\UriInterface $uri ) {
+                    if( !( $host = $uri->getHost() ) || !self::resolve( $host ) ) {
+                        throw new Exception( sprintf( 'Redirect to "%s" blocked', $host ) );
+                    }
+                },
+            ],
+            'curl' => [CURLOPT_RESOLVE => [$host . ':' . $port . ':' . $ip]],
+        ];
     }
 
 
