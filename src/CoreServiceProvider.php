@@ -50,10 +50,6 @@ class CoreServiceProvider extends Provider
 
         foreach( ['page', 'element', 'file'] as $type )
         {
-            Broadcast::channel( "cms.{$type}", fn( $user ) =>
-                Permission::can( "{$type}:view", $user )
-            );
-
             Broadcast::channel( "cms.{$type}.{id}", fn( $user ) =>
                 Permission::can( "{$type}:view", $user )
             );
