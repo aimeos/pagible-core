@@ -1,7 +1,7 @@
 <?php
 
 /**
- * @license MIT, https://opensource.org/license/mit
+ * @license LGPL, https://opensource.org/license/lgpl-3-0
  */
 
 
@@ -33,9 +33,6 @@ class InstallCore extends Command
         $this->comment( '  Publishing core files ...' );
         $result += $this->call( 'vendor:publish', ['--provider' => 'Aimeos\Cms\CoreServiceProvider'] );
 
-        $this->comment( '  Updating broadcast rate limiter ...' );
-        $result += $this->broadcast();
-
         $this->comment( '  Creating database ...' );
         $result += $this->db();
 
@@ -52,34 +49,6 @@ class InstallCore extends Command
         $result += $this->call( 'storage:link', ['--force' => null] );
 
         return $result ? 1 : 0;
-    }
-
-
-    /**
-     * Updates the broadcast limiter in existing CMS configuration files.
-     *
-     * @return int 0 on success, 1 on failure
-     */
-    protected function broadcast() : int
-    {
-        $filename = 'config/cms.php';
-        $content = file_get_contents( base_path( $filename ) );
-
-        if( $content === false ) {
-            $this->error( "  File [$filename] not found!" );
-            return 1;
-        }
-
-        $updated = str_replace( 'throttle:cms-admin', 'throttle:cms-broadcast', $content );
-
-        if( $updated !== $content ) {
-            file_put_contents( base_path( $filename ), $updated );
-            $this->line( sprintf( '  File [%1$s] updated' . PHP_EOL, $filename ) );
-        } else {
-            $this->line( sprintf( '  File [%1$s] already up to date' . PHP_EOL, $filename ) );
-        }
-
-        return 0;
     }
 
 

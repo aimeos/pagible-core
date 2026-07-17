@@ -1,7 +1,7 @@
 <?php
 
 /**
- * @license MIT, https://opensource.org/license/mit
+ * @license LGPL, https://opensource.org/license/lgpl-3-0
  */
 
 
@@ -534,9 +534,10 @@ class BenchmarkSeeder
     {
         return [
             'meta-tags' => [
+                'id' => Utils::uid(),
                 'type' => 'meta-tags',
+                'group' => 'basic',
                 'data' => ['description' => "Benchmark page {$index} description. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore."],
-                'files' => [],
             ],
         ];
     }

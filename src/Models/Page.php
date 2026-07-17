@@ -1,7 +1,7 @@
 <?php
 
 /**
- * @license MIT, https://opensource.org/license/mit
+ * @license LGPL, https://opensource.org/license/lgpl-3-0
  */
 
 
@@ -9,7 +9,6 @@ namespace Aimeos\Cms\Models;
 
 use Aimeos\Cms\Concerns\HasChanged;
 use Aimeos\Cms\Concerns\Tenancy;
-use Aimeos\Cms\Validation;
 use Aimeos\Nestedset\NodeTrait;
 use Aimeos\Nestedset\NestedSet;
 use Aimeos\Nestedset\AncestorsRelation;
@@ -356,19 +355,13 @@ class Page extends Base
 
 
     /**
-     * Returns the number of descendants below this node.
+     * Tests if node has children.
      *
-     * Derived from the nested set bounds without a query: the range [lft, rgt] spans the node
-     * and all its descendants at two slots each, so the count excludes the node itself. Zero for
-     * a leaf, so it still reads as "no children" where a boolean was expected, while a recursive
-     * bulk edit can size itself ("apply to N pages") from it. An unsaved node (null bounds) has no
-     * descendants - the ?? 0 keeps that case from doing null arithmetic.
-     *
-     * @return int Number of descendant pages
+     * @return bool TRUE if node has children, FALSE if not
      */
-    public function getHasAttribute() : int
+    public function getHasAttribute() : bool
     {
-        return intdiv( ( $this->getRgt() ?? 0 ) - ( $this->getLft() ?? 0 ) - 1, 2 );
+        return $this->getRgt() > $this->getLft() + 1;
     }
 
 
@@ -494,7 +487,7 @@ class Page extends Base
             $version->save();
         }
 
-        Cache::store( config( 'cms.theme.cache', 'file' ) )->forget( static::key( $this ) );
+        Cache::forget( static::key( $this ) );
 
         return $this;
     }
@@ -658,7 +651,7 @@ class Page extends Base
     protected function config(): Attribute
     {
         return Attribute::make(
-            set: fn( $value ) => json_encode( Validation::structured( $value, 'config' ) ),
+            set: fn( $value ) => json_encode( $value ?? new \stdClass() ),
         );
     }
 
@@ -710,7 +703,7 @@ class Page extends Base
     protected function meta(): Attribute
     {
         return Attribute::make(
-            set: fn( $value ) => json_encode( Validation::structured( $value, 'meta' ) ),
+            set: fn( $value ) => json_encode( $value ?? new \stdClass() ),
         );
     }
 
