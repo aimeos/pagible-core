@@ -1,7 +1,7 @@
 <?php
 
 /**
- * @license LGPL, https://opensource.org/license/lgpl-3-0
+ * @license MIT, https://opensource.org/license/mit
  */
 
 
@@ -33,6 +33,8 @@ abstract class CmsTestAbstract extends \Orchestra\Testbench\TestCase
 
         $app['config']->set('auth.providers.users.model', 'App\\Models\\User');
         $app['config']->set('scout.driver', 'collection');
+        // Pulse rescues missing-storage errors, which leaves PostgreSQL test transactions aborted.
+        $app['config']->set('pulse.enabled', false);
         $app['config']->set('cms.db', 'testing');
 
         \Aimeos\Cms\Tenancy::$callback = function() {
@@ -44,6 +46,7 @@ abstract class CmsTestAbstract extends \Orchestra\Testbench\TestCase
     protected function tearDown(): void
     {
         ( new \ReflectionProperty( \Aimeos\Cms\Schema::class, 'themes' ) )->setValue( null, [] );
+        \Aimeos\Cms\Schema::source( null );
         parent::tearDown();
     }
 

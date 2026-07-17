@@ -1,7 +1,7 @@
 <?php
 
 /**
- * @license LGPL, https://opensource.org/license/lgpl-3-0
+ * @license MIT, https://opensource.org/license/mit
  */
 
 
@@ -214,7 +214,7 @@ class Utils
      */
     public static function isValidMimetype( string $mime ) : bool
     {
-        $allowed = config( 'cms.graphql.mimetypes', [] );
+        $allowed = config( 'cms.upload.mimetypes', [] );
 
         if( empty( $allowed ) ) {
             return true;
@@ -284,8 +284,12 @@ class Utils
             return false;
         }
 
-        // Strict: DNS lookup and reject private/reserved IPs
-        return self::resolve( $parsed['host'] ) !== null;
+        // In strict mode, require the host to resolve to an allowed IP address
+        if( $strict ) {
+            return self::resolve( $parsed['host'] ) !== null;
+        }
+
+        return true;
     }
 
 
@@ -297,7 +301,7 @@ class Utils
      */
     public static function isValidUpload( UploadedFile $upload ) : bool
     {
-        return $upload->getSize() <= config( 'cms.graphql.filesize', 50 ) * 1024 * 1024;
+        return $upload->getSize() <= config( 'cms.upload.filesize', 50 ) * 1024 * 1024;
     }
 
 
@@ -358,18 +362,62 @@ class Utils
 
 
     /**
-     * Resolves a hostname to a public IP address via DNS.
+     * Gets or sets the originating interface for content changes in the current request.
      *
-     * @param string $host The hostname to resolve
-     * @return string|null The first public IP address, or null if none found
+     * Used to tag audit events with their origin: the GraphQL and MCP entry points set 'graphql'
+     * resp. 'mcp', everything else (console commands, scheduled jobs) defaults to 'cli'. Stored on
+     * the request instance rather than a static, so it neither leaks between requests under Octane
+     * nor needs a reset.
+     *
+     * @param string|null $source Origin to set for this request, or null to only read it
+     * @return string The current origin, defaulting to 'cli'
+     */
+    public static function source( ?string $source = null ) : string
+    {
+        $request = request();
+
+        if( $source !== null ) {
+            $request->attributes->set( 'cms-source', $source );
+        }
+
+        $value = $request->attributes->get( 'cms-source', 'cli' );
+        return is_string( $value ) ? $value : 'cli';
+    }
+
+
+    /**
+     * Resolves a hostname to an allowed IP address.
+     *
+     * Private and reserved ranges are accepted unless "cms.allow-internal" is
+     * disabled. Literal IP hosts are validated directly without a DNS lookup.
+     *
+     * @param string $host The hostname or IP address to resolve
+     * @return string|null The first allowed IP address, or null if none found
      */
     public static function resolve( string $host ) : ?string
     {
+        $flags = config( 'cms.allow-internal', true )
+            ? 0 : FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE;
+
+        // Literal IP host: validate directly, a DNS lookup would never resolve it
+        if( filter_var( $host, FILTER_VALIDATE_IP ) ) {
+            return filter_var( $host, FILTER_VALIDATE_IP, $flags ) ? $host : null;
+        }
+
         foreach( @dns_get_record( $host, DNS_A + DNS_AAAA ) ?: [] as $r )
         {
             $ip = $r['ip'] ?? $r['ipv6'] ?? null;
 
-            if( $ip && filter_var( $ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE ) ) {
+            if( $ip && filter_var( $ip, FILTER_VALIDATE_IP, $flags ) ) {
+                return $ip;
+            }
+        }
+
+        // dns_get_record( DNS_A | DNS_AAAA ) misses CNAME-only hosts on some
+        // resolvers; fall back to the system resolver to avoid rejecting them.
+        foreach( @gethostbynamel( $host ) ?: [] as $ip )
+        {
+            if( filter_var( $ip, FILTER_VALIDATE_IP, $flags ) ) {
                 return $ip;
             }
         }
@@ -381,16 +429,20 @@ class Utils
     /**
      * Returns Guzzle HTTP options that mitigate SSRF for the given URL.
      *
-     * Validates the URL, pins the host to its resolved public IP (preventing
-     * DNS rebinding) and blocks redirects to private or reserved addresses.
+     * Validates the URL syntactically, resolves the host once and pins the
+     * connection to that IP (preventing DNS rebinding), and re-validates the
+     * host on every redirect. Private/reserved targets are allowed unless
+     * "cms.allow-internal" is disabled.
      *
      * @param string $url The http(s) URL that will be fetched
      * @return array<string, mixed> Options to pass to Http::withOptions()
-     * @throws Exception If the URL is invalid or resolves to a non-public address
+     * @throws Exception If the URL is invalid or the host does not resolve
      */
     public static function safeHttp( string $url ) : array
     {
-        if( !self::isValidUrl( $url ) ) {
+        // Syntactic validation only; the host is resolved once below and the
+        // result reused for both the allow-check and the connection pin.
+        if( !self::isValidUrl( $url, false ) ) {
             throw new Exception( sprintf( 'Invalid or unsafe URL "%s"', $url ) );
         }
 
@@ -399,7 +451,7 @@ class Utils
         $port = $parsed['port'] ?? ( ( $parsed['scheme'] ?? '' ) === 'https' ? 443 : 80 );
 
         if( !( $ip = self::resolve( $host ) ) ) {
-            throw new Exception( sprintf( 'Host "%s" does not resolve to a public address', $host ) );
+            throw new Exception( sprintf( 'Host "%s" does not resolve to an allowed address', $host ) );
         }
 
         return [

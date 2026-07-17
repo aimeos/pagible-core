@@ -1,7 +1,7 @@
 <?php
 
 /**
- * @license LGPL, https://opensource.org/license/lgpl-3-0
+ * @license MIT, https://opensource.org/license/mit
  */
 
 
@@ -36,6 +36,7 @@ class TenancyTest extends CoreTestAbstract
 
     public function testTenancyScopeApply()
     {
+        app()->forgetInstance( Tenancy::class );
 
         $pages = Page::all();
 

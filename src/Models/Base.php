@@ -1,7 +1,7 @@
 <?php
 
 /**
- * @license LGPL, https://opensource.org/license/lgpl-3-0
+ * @license MIT, https://opensource.org/license/mit
  */
 
 
@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Str;
+use Aimeos\Cms\Concerns\Broadcasts;
 use Aimeos\Cms\DB;
 
 
@@ -25,15 +26,59 @@ use Aimeos\Cms\DB;
  * @property string $id
  * @property string $editor
  * @property Version|null $latest
+ * @property \Illuminate\Support\Carbon|null $deleted_at
  * @method static \Illuminate\Database\Eloquent\Builder<static> withTrashed()
  * @method self publish(Version $version)
  * @method bool restore()
  */
 abstract class Base extends Model
 {
+    use Broadcasts;
     use HasUuids;
 
     private static ?bool $isSqlsrv = null;
+
+
+    /**
+     * Compare JSON casts independent of object key order.
+     *
+     * MySQL normalizes JSON object keys when storing values. Laravel's default
+     * strict comparison therefore treats unchanged JSON as dirty when the same
+     * value is encoded in a different key order.
+     *
+     * @param string $key Attribute name
+     * @return bool TRUE if the current and original values are equivalent
+     */
+    public function originalIsEquivalent( $key )
+    {
+        if( $this->hasCast( $key, ['object', 'collection'] ) && array_key_exists( $key, $this->original ) ) {
+            return self::canonicalJson( $this->fromJson( $this->attributes[$key] ?? null ) )
+                === self::canonicalJson( $this->fromJson( $this->original[$key] ?? null ) );
+        }
+
+        return parent::originalIsEquivalent( $key );
+    }
+
+
+    /**
+     * Recursively sort JSON object keys while retaining list order and value types.
+     */
+    private static function canonicalJson( mixed $value ) : mixed
+    {
+        if( !is_array( $value ) ) {
+            return $value;
+        }
+
+        foreach( $value as $key => $item ) {
+            $value[$key] = self::canonicalJson( $item );
+        }
+
+        if( !array_is_list( $value ) ) {
+            ksort( $value );
+        }
+
+        return $value;
+    }
 
 
     /**

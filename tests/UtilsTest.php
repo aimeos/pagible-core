@@ -1,7 +1,7 @@
 <?php
 
 /**
- * @license LGPL, https://opensource.org/license/lgpl-3-0
+ * @license MIT, https://opensource.org/license/mit
  */
 
 
@@ -153,6 +153,29 @@ class UtilsTest extends CoreTestAbstract
     }
 
 
+    public function testResolveAllowsPrivateIpByDefault()
+    {
+        config( ['cms.allow-internal' => true] );
+
+        // Literal IPs are validated directly without a DNS lookup
+        $this->assertEquals( '127.0.0.1', Utils::resolve( '127.0.0.1' ) );
+        $this->assertEquals( '10.0.0.1', Utils::resolve( '10.0.0.1' ) );
+        $this->assertEquals( '8.8.8.8', Utils::resolve( '8.8.8.8' ) );
+
+        config( ['cms.allow-internal' => false] );
+    }
+
+
+    public function testResolveBlocksPrivateIpWhenDisabled()
+    {
+        $this->assertNull( Utils::resolve( '127.0.0.1' ) );
+        $this->assertNull( Utils::resolve( '10.0.0.1' ) );
+
+        // Public IPs remain allowed
+        $this->assertEquals( '8.8.8.8', Utils::resolve( '8.8.8.8' ) );
+    }
+
+
     public function testHtmlStripsScript()
     {
         $result = Utils::html( '<p>Hello</p><script>alert(1)</script>' );
@@ -281,7 +304,7 @@ class UtilsTest extends CoreTestAbstract
 
     public function testIsValidUploadSizeExceeded()
     {
-        config()->set( 'cms.graphql.filesize', 0.001 ); // ~1 KB
+        config()->set( 'cms.upload.filesize', 0.001 ); // ~1 KB
 
         $upload = UploadedFile::fake()->create( 'test.pdf', 100, 'application/pdf' );
 
@@ -291,8 +314,6 @@ class UtilsTest extends CoreTestAbstract
 
     public function testIsValidMimetypeAllowed()
     {
-        config()->set( 'cms.graphql.mimetypes', ['application/pdf', 'application/vnd.', 'application/zip', 'application/gzip', 'audio/', 'image/', 'text/', 'video/'] );
-
         $this->assertTrue( Utils::isValidMimetype( 'image/png' ) );
         $this->assertTrue( Utils::isValidMimetype( 'audio/mpeg' ) );
         $this->assertTrue( Utils::isValidMimetype( 'video/mp4' ) );
@@ -306,8 +327,6 @@ class UtilsTest extends CoreTestAbstract
 
     public function testIsValidMimetypeRejected()
     {
-        config()->set( 'cms.graphql.mimetypes', ['application/pdf', 'application/vnd.', 'application/zip', 'application/gzip', 'audio/', 'image/', 'text/', 'video/'] );
-
         $this->assertFalse( Utils::isValidMimetype( 'application/x-httpd-php' ) );
         $this->assertFalse( Utils::isValidMimetype( 'application/x-executable' ) );
         $this->assertFalse( Utils::isValidMimetype( 'application/x-sharedlib' ) );
