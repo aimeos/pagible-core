@@ -88,10 +88,10 @@ return [
     |--------------------------------------------------------------------------
     |
     | Use the database connection defined in ./config/database.php to manage
-    | page, element and file records.
+    | page, element and file records. Defaults to the application's connection.
     |
     */
-    'db' => env( 'DB_CONNECTION', 'sqlite' ),
+    'db' => env( 'CMS_DB_CONNECTION', env( 'DB_CONNECTION', 'sqlite' ) ),
 
     /*
     |--------------------------------------------------------------------------
@@ -135,11 +135,13 @@ return [
     | Image settings
     |--------------------------------------------------------------------------
     |
-    | The "preview-sizes" array defines the maximum widths and heights of the
-    | preview images in pixel that are generated for the uploaded images.
+    | The "driver" setting selects the Intervention Image driver available in
+    | the host environment. The "preview-sizes" array defines the maximum
+    | widths and heights of previews generated for uploaded images.
     |
     */
     'image' => [
+        'driver' => env( 'CMS_IMAGE_DRIVER', 'gd' ),
         'preview-sizes' => [
             ['width' => 480, 'height' => 270],
             ['width' => 960, 'height' => 540],
@@ -202,17 +204,6 @@ return [
     |
     */
     'prune' => env( 'CMS_PRUNE', 30 ),
-
-    /*
-    |--------------------------------------------------------------------------
-    | Bulk processing chunk size
-    |--------------------------------------------------------------------------
-    |
-    | Maximum number of items fetched per publication batch, cache routes or
-    | item IDs queued, and documents hydrated per synchronization job.
-    |
-    */
-    'chunksize' => (int) env( 'CMS_CHUNKSIZE', 100 ),
 
     /*
     |--------------------------------------------------------------------------

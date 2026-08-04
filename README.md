@@ -17,17 +17,17 @@ After installation, the configuration is available in `config/cms.php`:
 | `roles` | `['admin' => ['*'], ...]` | Named role definitions mapping to permission sets. Supports wildcards (`page:*`, `*:view`, `*`) and denials (`!page:purge`) |
 | `access.limit` | `250` | Strict maximum number of distinct frontend access values per tenant (`CMS_ACCESS_LIMIT`) |
 | `broadcast` | `false` | Enable real-time broadcasting via Laravel Reverb so other editors see changes immediately |
-| `db` | `sqlite` | Database connection name (references `config/database.php`) |
+| `db` | `sqlite` | Database connection name from `CMS_DB_CONNECTION`, falling back to `DB_CONNECTION` |
 | `disks.public.name` | `public` | Filesystem disk for public uploads (`CMS_DISK`) |
 | `disks.private.name` | `local` | Filesystem disk for page-access-protected uploads (`CMS_PRIVATE_DISK`) |
 | `disks.private.ttl` | `300` | Lifetime in seconds of temporary private storage URLs (`CMS_PRIVATE_TTL`) |
+| `image.driver` | `gd` | Intervention Image driver used for image processing (`CMS_IMAGE_DRIVER`) |
 | `image.preview-sizes` | `[480, 960, 1920]` | Preview image widths in pixels for uploaded images |
 | `locales` | `en,ar,zh,fr,de,es,pt,pt-BR,ru` | Comma-separated ISO language codes. First locale is the default for new content |
 | `lock` | `30` | Page-tree write-lock lifetime and maximum acquisition wait in seconds (`CMS_LOCK`) |
 | `multidomain` | `false` | Enable domain-based page routing |
 | `navdepth` | `2` | Maximum depth of the navigation tree menu |
 | `prune` | `30` | Days before soft-deleted items are permanently removed. Set to `false` to disable |
-| `chunksize` | `100` | Pages fetched per publication batch, or routes/items queued and hydrated per synchronization job (`CMS_CHUNKSIZE`) |
 | `upload.filesize` | `50` | Maximum file upload size in MB |
 | `upload.mimetypes` | See below | Allowed MIME types or prefixes for all CMS interfaces |
 | `versions` | `10` | Maximum number of versions to retain per page, element, or file |
